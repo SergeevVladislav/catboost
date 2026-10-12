@@ -1,0 +1,83 @@
+name: PR3193 Windows snapshot diagnostics
+on:
+  push:
+    branches: [ci/pr3193-snapshot-diagnostics]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  snapshots:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: pr3193
+            run: 38266135690
+            sha: e2c7b73634468ed1c7d8ada710cd6613a55648d7
+          - label: master
+            run: 38081071503
+            sha: 339c29431780840eb8d7d297bd27f6d5e1c94359
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: catboost
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Download CLI from upstream CI
+        uses: actions/download-artifact@v8
+        with:
+          name: catboost-cli-windows-x86_64-${{ matrix.sha }}
+          path: build_native_root/catboost/app
+          repository: catboost/catboost
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+      - name: Download matching Python package
+        uses: actions/download-artifact@v8
+        with:
+          name: catboost-python-package-dist-cp312-cp312-win_amd64-${{ matrix.sha }}
+          path: wheel
+          repository: catboost/catboost
+          run-id: ${{ matrix.run }}
+          github-token: ${{ github.token }}
+      - name: Prepare tests and crash diagnostics
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          python -m pip install pytest pytest-xdist pytest-randomly numpy pandas
+          $wheel = (Get-ChildItem wheel/*.whl | Select-Object -First 1).FullName
+          python -m pip install $wheel
+          $dumpDir = Join-Path $env:GITHUB_WORKSPACE dumps
+          New-Item -ItemType Directory -Force $dumpDir
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\catboost.exe'
+          New-Item -Path $key -Force
+          New-ItemProperty -Path $key -Name DumpFolder -Value $dumpDir -PropertyType ExpandString -Force
+          New-ItemProperty -Path $key -Name DumpType -Value 1 -PropertyType DWord -Force
+          New-ItemProperty -Path $key -Name DumpCount -Value 5 -PropertyType DWord -Force
+      - name: Repeat all feature-importance snapshot scenarios
+        shell: pwsh
+        run: |
+          $env:CMAKE_SOURCE_DIR = Join-Path $env:GITHUB_WORKSPACE catboost
+          $env:CMAKE_BINARY_DIR = Join-Path $env:GITHUB_WORKSPACE build_native_root
+          $env:HAVE_CUDA = '0'
+          $env:PORT_SYNC_PATH = Join-Path $env:GITHUB_WORKSPACE port_sync
+          Set-Location catboost/catboost/pytest
+          $failed = $false
+          for ($i = 1; $i -le 3; $i++) {
+            $env:TEST_OUTPUT_DIR = Join-Path $env:GITHUB_WORKSPACE "snapshot-output-$i"
+            python -m pytest test.py -k 'test_eval_feature_snapshot and fstr' -n auto -q -ra --randomly-seed=$i --junitxml="$env:GITHUB_WORKSPACE/results-$i.xml"
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
+          if ($failed) { exit 1 }
+      - name: Preserve diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshot-diagnostics-${{ matrix.label }}
+          path: |
+            results-*.xml
+            snapshot-output-*/
+            dumps/
+          retention-days: 7
