@@ -1,35 +1,16 @@
-name: Test on all OSes
-
+name: PR 2999 Spark diagnostics
 on:
   workflow_dispatch:
-    inputs:
-      artifacts_version:
-        required: true
-        type: string
-      artifacts_run_id:
-        required: true
-        type: string
-      artifacts_repository:
-        required: false
-        type: string
-        default: catboost/catboost
-      catboost_package_name:
-        required: false
-        type: string
-        default: catboost_dev
-
-
+permissions:
+  contents: read
+  actions: read
 jobs:
-  check:
-    name: Test per OS
-    strategy:
-      matrix:
-         os: [linux, macos, windows]
-      fail-fast: false
+  spark:
+    uses: ./.github/workflows/test_per_platform.yaml
     with:
-      os: ${{ matrix.os }}
-      artifacts_version: ${{ inputs.artifacts_version }}
-      artifacts_run_id: ${{ inputs.artifacts_run_id }}
-      artifacts_repository: ${{ inputs.artifacts_repository }}
-      catboost_package_name: ${{ inputs.catboost_package_name }}
-    uses: ./.github/workflows/test_per_os.yaml
+      os: macos
+      machine: x86_64
+      runs-on_value: macos-15-intel
+      artifacts_version: 1f3da8ced45705f7c34c7beb1314fa06ff10e8c8
+      artifacts_run_id: '42074075448'
+      artifacts_repository: catboost/catboost
