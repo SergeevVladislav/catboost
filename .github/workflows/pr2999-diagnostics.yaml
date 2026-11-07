@@ -1,0 +1,17 @@
+name: PR 2999 Spark diagnostics
+on:
+  push:
+    branches: [pr2999-ci-diagnostics]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  spark:
+    uses: ./.github/workflows/test_per_platform.yaml
+    with:
+      os: macos
+      machine: x86_64
+      runs-on_value: macos-15-intel
+      artifacts_version: 1f3da8ced45705f7c34c7beb1314fa06ff10e8c8
+      artifacts_run_id: '42074075448'
+      artifacts_repository: catboost/catboost
